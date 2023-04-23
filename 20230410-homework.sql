@@ -116,20 +116,18 @@ ORDER BY od.ProductID;
 
 -- 列出從來沒有打折 (Discount) 出售的產品
 SELECT *
-FROM Products
-WHERE Discontinued = 0;
+FROM Orders o
+INNER jOIN [Order Details] od ON od.OrderID = o.OrderID
+WHERE od.Discount = 0;
 
 -- 列出購買非本國的產品的客戶
 SELECT DISTINCT c.CustomerID, c.ContactName, c.City
 FROM Customers c
 INNER JOIN Orders o ON o.CustomerID = c.CustomerID
 INNER JOIN [Order Details] od ON od.OrderID = o.OrderID
-WHERE od.ProductID IN (
-	SELECT  p.ProductID
-	FROM Products p 
-	INNER JOIN Suppliers s ON s.SupplierID = p.SupplierID
-	WHERE s.City <> c.City
-)
+INNER JOIN Products p ON p.ProductID = od.ProductID
+INNER JOIN Suppliers s ON s.SupplierID = p.SupplierID
+WHERE(s.Country <> c.Country)
 
 -- 列出在同個城市中有公司員工可以服務的客戶
 SELECT c.CustomerID
@@ -149,18 +147,73 @@ FROM [Order Details] od
 SELECT o.OrderDate, o.OrderID
 FROM Orders o
 WHERE DATEPART(day,o.OrderDate) >= 20 
+
 -- 列出每個月月底售出的產品
 SELECT o.OrderDate, o.OrderID, p.ProductID
 FROM Orders o
 INNER JOIN [Order Details] od ON od.OrderID = o.OrderID
 INNER JOIN Products p ON p.ProductID = od.ProductID
 WHERE DATEPART(day,o.OrderDate) >= 20 
+
 -- 找出有敗過最貴的三個產品中的任何一個的前三個大客戶
- 
--- 找出有敗過銷售金額前三高個產品的前三個大客戶
+SELECT TOP 3 c.CustomerID, SUM((od.UnitPrice * od.Quantity) * (1- od.Discount)) totalprice
+FROM [Order Details] od
+INNER JOIN Orders o ON o.OrderID = od.OrderID
+INNER JOIN Customers c ON c.CustomerID = o.CustomerID
+WHERE c.CustomerID IN (
+	SELECT DISTINCT c.CustomerID
+	FROM Customers c
+	INNER JOIN Orders o ON o.CustomerID = c.CustomerID
+	INNER JOIN [Order Details] od ON od.ProductID IN (
+		SELECT TOP 3 p.ProductID
+		FROM Products p
+		ORDER BY p.UnitPrice DESC
+	)
+)
+GROUP BY c.CustomerID
+ORDER BY totalprice DESC;
+
+-- 找出有敗過銷售金額前三高個產品的前三個大客戶 ?
+SELECT TOP 3 c.CustomerID, SUM((od.UnitPrice * od.Quantity) * (1- od.Discount)) totalprice
+FROM [Order Details] od
+INNER JOIN Orders o ON o.OrderID = od.OrderID
+INNER JOIN Customers c ON c.CustomerID = o.CustomerID
+WHERE c.CustomerID IN (
+SELECT DISTINCT c.CustomerID
+FROM Customers c
+INNER JOIN Orders o ON o.CustomerID = c.CustomerID
+INNER JOIN [Order Details] od ON od.ProductID IN (
+	SELECT TOP 3 od.ProductID
+	FROM [Order Details] od
+	GROUP BY od.ProductID
+	ORDER BY  SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) DESC
+)
+)
+GROUP BY c.CustomerID
+ORDER BY totalprice DESC;
 
 -- 找出有敗過銷售金額前三高個產品所屬類別的前三個大客戶
+SELECT TOP 3 cc.CustomerID, SUM((od.UnitPrice * od.Quantity) * (1- od.Discount)) totalprice
+FROM Customers cc
+INNER JOIN Orders o ON o.CustomerID = cc.CustomerID
+INNER JOIN [Order Details] od ON od.OrderID = o.OrderID
+INNER JOIN Products p ON p.ProductID = od.ProductID
+INNER JOIN Categories c ON c.CategoryID = p.CategoryID
+WHERE c.CategoryID IN(
+	SELECT c.CategoryID
+	FROM Categories c
+	INNER JOIN Products p ON p.CategoryID = c.CategoryID
+	WHERE p.ProductID IN(
+		SELECT TOP 3 od.ProductID
+		FROM [Order Details] od
+		GROUP BY od.ProductID
+		ORDER BY  SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) DESC
+	)
+)
+GROUP BY cc.CustomerID
+ORDER BY totalprice DESC;
 
+	
 -- 列出消費總金額高於所有客戶平均消費總金額的客戶的名字，以及客戶的消費總金額
 WITH t1 AS(
 SELECT SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) totalPrice, c.CustomerID CustomerID 
@@ -173,16 +226,19 @@ SELECT CustomerID, totalPrice
 FROM t1
 WHERE totalPrice > (
 SELECT AVG(totalPrice) FROM t1)
+
 -- 列出最熱銷的產品，以及被購買的總金額
 SELECT TOP 1 SUM(od.UnitPrice) sum_price, od.ProductID
 FROM [Order Details] od
 GROUP BY od.ProductID
 ORDER BY SUM(od.Quantity) DESC
+
 -- 列出最少人買的產品
 SELECT TOP 1 SUM(od.Quantity) sum_quantity, od.ProductID
 FROM [Order Details] od
 GROUP BY od.ProductID
 ORDER BY SUM(od.Quantity) 
+
 -- 列出最沒人要買的產品類別 (Categories)
 SELECT TOP 1 SUM(od.Quantity) SumQuantity, c.CategoryID
 FROM [Order Details] od
@@ -190,9 +246,22 @@ INNER JOIN Products p ON p.ProductID = od.ProductID
 INNER JOIN Categories c ON c.CategoryID = p.CategoryID
 GROUP BY c.CategoryID
 ORDER BY SumQuantity
--- 列出跟銷售最好的供應商買最多金額的客戶與購買金額 (含購買其它供應商的產品)
 
-
+-- 列出跟銷售最好的供應商買最多金額的客戶與購買金額 (含購買其它供應商的產品)??????
+SELECT TOP 1 SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) totalPriec, c.CustomerID
+FROM Customers c
+INNER JOIN Orders o ON o.CustomerID = c.CustomerID
+INNER JOIN [Order Details] od ON od.OrderID = o.OrderID
+INNER JOIN Products p ON p.ProductID = od.ProductID
+WHERE p.SupplierID = (
+SELECT TOP 1 s.SupplierID
+FROM Suppliers s
+INNER JOIN Products p ON p.SupplierID = s.SupplierID
+INNER JOIN [Order Details] od ON od.ProductID = p.ProductID
+GROUP BY s.SupplierID
+ORDER BY SUM(od.Quantity) DESC)
+GROUP BY c.CustomerID
+ORDER BY totalPriec DESC
 
 -- 列出跟銷售最好的供應商買最多金額的客戶與購買金額 (不含購買其它供應商的產品)
 SELECT TOP 1 SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) totalPriec, c.CustomerID
@@ -209,6 +278,7 @@ GROUP BY s.SupplierID
 ORDER BY SUM(od.Quantity) DESC)
 GROUP BY c.CustomerID
 ORDER BY totalPriec DESC
+
 -- 列出那些產品沒有人買過 ??
 SELECT p.ProductID
 FROM Products p
@@ -230,9 +300,18 @@ WHERE CustomerID IN(
 SELECT c.CustomerID
 FROM Customers c
 WHERE c.Fax IS NULL)
+
 -- 列出每一個城市消費的產品種類數量
 
 -- 列出目前沒有庫存的產品在過去總共被訂購的數量
+SELECT od.ProductID, SUM(od.Quantity) quantity
+FROM [Order Details] od
+WHERE od.ProductID IN (
+SELECT p.ProductID
+FROM Products p
+WHERE p.UnitsInStock = '0'
+)
+GROUP BY od.ProductID
 
 -- 列出目前沒有庫存的產品在過去曾經被那些客戶訂購過
 
@@ -244,20 +323,23 @@ WHERE c.Fax IS NULL)
 
 -- 列出每一個客戶買最多的那一個產品與購買數量
 
+
+
 -- 按照城市分類，找出每一個城市最近一筆訂單的送貨時間
 SELECT ShipCity, MAX(ShippedDate) recentDate
 FROM ORDERS 
 WHERE ShipCity IS NOT NULL
 GROUP BY ShipCity;
+
 -- 列出購買金額第五名與第十名的客戶，以及兩個客戶的金額差距
-WITH t1 AS (
-	SELECT
-		ProductID, ProductName, UnitPrice,CategoryID,
-		ROW_NUMBER() OVER (
-			ORDER BY UnitPrice DESC
-		) AS NoDesc,
-		ROW_NUMBER() OVER (
-			ORDER BY UnitPrice 
-		) AS NoAsc
-	FROM Products
-);
+WITH t1 AS(
+SELECT SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) SumPrice,
+	ROW_NUMBER() OVER (
+		ORDER BY SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) DESC
+	) AS NoDesc
+FROM Customers c
+INNER JOIN Orders o ON o.CustomerID = c.CustomerID
+INNER JOIN [Order Details] od ON od.OrderID = o.OrderID
+GROUP BY c.CustomerID
+)
+SELECT * FROM t1 WHERE NoDesc = 5 OR NoDesc = 8;
