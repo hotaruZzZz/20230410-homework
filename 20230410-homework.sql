@@ -379,7 +379,7 @@ GROUP BY ShipCity;
 
 -- 列出購買金額第五名與第十名的客戶，以及兩個客戶的金額差距
 WITH t1 AS(
-SELECT SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) SumPrice,
+SELECT c.CustomerID, SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) SumPrice,
 	ROW_NUMBER() OVER (
 		ORDER BY SUM((od.UnitPrice*od.Quantity)*(1-od.Discount)) DESC
 	) AS NoDesc
@@ -388,4 +388,7 @@ INNER JOIN Orders o ON o.CustomerID = c.CustomerID
 INNER JOIN [Order Details] od ON od.OrderID = o.OrderID
 GROUP BY c.CustomerID
 )
-SELECT * FROM t1 WHERE NoDesc = 5 OR NoDesc = 8;
+SELECT t1.CustomerID, t1.SumPrice SumPrice1,  t2.CustomerID, t2.SumPrice SumPrice2, ABS(t1.SumPrice - t2.SumPrice) gap
+FROM t1 t1
+INNER JOIN t1 t2 ON t1.NoDesc = 5 AND t2.NoDesc = 10
+WHERE t1.NoDesc = 5 OR t2.NoDesc = 10;
